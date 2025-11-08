@@ -5,6 +5,7 @@ Simple AI Lead Analyzer
 
 import os
 import pandas as pd
+import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 import json
@@ -93,15 +94,15 @@ Create descriptive personas like:
 """)
 
 
-def analyze_lead(row):
+async def analyze_lead(row):
+    # Handle empty values - treat empty strings as missing
+    industry = row.get('industry', '') or 'Not provided'
+    job_title = row.get('job_title', '') or 'Not provided'
+    company_size = row.get('company_size', '') or 'Not provided'
+    notes = row.get('notes', '') or 'Not provided'
+    last_contact = row.get('last_contact', '') or 'Never contacted'
+    
     try:
-        # Handle empty values - treat empty strings as missing
-        industry = row.get('industry', '') or 'Not provided'
-        job_title = row.get('job_title', '') or 'Not provided'
-        company_size = row.get('company_size', '') or 'Not provided'
-        notes = row.get('notes', '') or 'Not provided'
-        last_contact = row.get('last_contact', '') or 'Never contacted'
-        
         # Call AI
         messages = prompt.format_messages(
             name=row['name'],
@@ -114,7 +115,7 @@ def analyze_lead(row):
             last_contact=last_contact
         )
         
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         
         # Parse JSON
         result = json.loads(response.content.strip().replace('```json', '').replace('```', ''))
@@ -134,8 +135,8 @@ def analyze_lead(row):
 
 
 # Main process
-def process_leads(csv_file='sales_leads.csv'):
-    """CSV process করা"""
+async def process_leads_async(csv_file='sales_leads.csv'):
+    """CSV process করা - async version"""
     
     # Load CSV
     df = pd.read_csv(csv_file, dtype={'company_size': str})
@@ -149,12 +150,46 @@ def process_leads(csv_file='sales_leads.csv'):
     df['ai_filled_company_size'] = ''
     df['ai_filled_notes'] = ''
     
-    # Process each lead
+    # Process all leads in parallel with real-time output
+    print(f"🤖 Analyzing {len(df)} leads in parallel...\n")
+    
+    # Create tasks with indices
+    tasks = {}
     for idx, row in df.iterrows():
-        print(f"🤖 Analyzing {idx+1}/{len(df)}: {row['name']}...")
-        
-        result = analyze_lead(row)
-        
+        task = asyncio.create_task(analyze_lead(row))
+        tasks[task] = (idx, row)
+    
+    # Process results as they complete
+    completed_count = 0
+    results_dict = {}
+    
+    for task in asyncio.as_completed(tasks.keys()):
+        idx, row = tasks[task]
+        try:
+            result = await task
+            completed_count += 1
+            
+            # Print output immediately
+            print(f"🤖 [{completed_count}/{len(df)}] Analyzed: {row['name']}...")
+            print(f"   Score: {result['priority_score']}/100 | {result['buyer_persona']}\n")
+            
+            # Store result with original index
+            results_dict[idx] = result
+            
+        except Exception as e:
+            print(f"❌ Error analyzing {row['name']}: {e}\n")
+            results_dict[idx] = {
+                'priority_score': 50,
+                'buyer_persona': 'Unknown',
+                'filled_industry': row.get('industry', 'Unknown'),
+                'filled_job_title': row.get('job_title', 'Unknown'),
+                'filled_company_size': row.get('company_size', 'Unknown'),
+                'filled_notes': 'Error occurred'
+            }
+    
+    # Update dataframe with results
+    for idx, result in results_dict.items():
+        row = df.loc[idx]
         df.at[idx, 'priority_score'] = result['priority_score']
         df.at[idx, 'buyer_persona'] = result['buyer_persona']
         
@@ -163,8 +198,6 @@ def process_leads(csv_file='sales_leads.csv'):
         df.at[idx, 'ai_filled_job_title'] = result.get('filled_job_title', row.get('job_title', ''))
         df.at[idx, 'ai_filled_company_size'] = result.get('filled_company_size', row.get('company_size', ''))
         df.at[idx, 'ai_filled_notes'] = result['filled_notes']
-        
-        print(f"   Score: {result['priority_score']}/100 | {result['buyer_persona']}\n")
     
     # Sort by priority score (highest first)
     df = df.sort_values('priority_score', ascending=False)
@@ -173,12 +206,17 @@ def process_leads(csv_file='sales_leads.csv'):
     output_file = '/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv'
     df.to_csv(output_file, index=False)
     
-    print(f"Done! Saved to: {output_file}")
-    print(f"Sorted by priority (highest to lowest)")
+    print(f"✅ Done! Saved to: {output_file}")
+    print(f"✅ Sorted by priority (highest to lowest)\n")
     
     return df
 
 
+def process_leads(csv_file='sales_leads.csv'):
+    """CSV process করা - sync wrapper for backward compatibility"""
+    return asyncio.run(process_leads_async(csv_file))
+
+
 # Run
 if __name__ == "__main__":
-    process_leads('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/dataset/leads.csv')
+    asyncio.run(process_leads_async('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/dataset/leads.csv'))

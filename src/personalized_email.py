@@ -5,6 +5,7 @@ Professional, GRE-style emails with dynamic tone based on lead profile
 
 import os
 import pandas as pd
+import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 import json
@@ -115,7 +116,7 @@ def determine_contact_status(last_contact):
         return "Contact history unclear"
 
 
-def generate_email(lead):
+async def generate_email(lead):
     """একটা lead এর জন্য email generate করা"""
     try:
         # Determine contact status
@@ -143,7 +144,7 @@ def generate_email(lead):
             contact_status=contact_status
         )
         
-        response = llm.invoke(messages)
+        response = await llm.ainvoke(messages)
         
         # Parse response
         result = json.loads(response.content.strip().replace('```json', '').replace('```', ''))
@@ -160,8 +161,8 @@ def generate_email(lead):
         }
 
 
-def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_generated.csv'):
-    """সব leads এর জন্য email generate করা"""
+async def generate_all_emails_async(input_csv='analyzed_leads.csv', output_csv='emails_generated.csv'):
+    """সব leads এর জন্য email generate করা - async version"""
     
     print(f"\n📂 Loading analyzed leads from {input_csv}...")
     
@@ -169,7 +170,7 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
     df = pd.read_csv(input_csv)
     
     print(f"✅ Loaded {len(df)} leads")
-    print(f"🤖 Starting email generation...\n")
+    print(f"🤖 Starting email generation in parallel...\n")
     
     # Add email columns
     df['email_subject'] = ''
@@ -178,27 +179,28 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
     df['personalization_notes'] = ''
     df['email_generated_at'] = ''
     
-    # Generate emails
+    # Generate emails in parallel
+    tasks = []
     for idx, row in df.iterrows():
-        print(f"✍️  Generating email {idx+1}/{len(df)}: {row['name']} ({row['company']})")
+        tasks.append(generate_email(row))
+    
+    emails = await asyncio.gather(*tasks)
+    
+    # Update dataframe with results
+    for idx, email in enumerate(emails):
+        row = df.iloc[idx]
+        print(f"✍️  Generated email {idx+1}/{len(df)}: {row['name']} ({row['company']})")
         print(f"    Priority: {row.get('priority_score', 'N/A')}/100 | Persona: {row.get('buyer_persona', 'N/A')}")
-
-        email = generate_email(row)
-        
         print("\n📧 Generated Email:")
         print(email)
         print("-" * 80)  # separator for readability
-
         
         # Update dataframe
-        df.at[idx, 'email_subject'] = email['subject']
-        df.at[idx, 'email_body'] = email['body']
-        df.at[idx, 'email_tone'] = email['tone_used']
-        df.at[idx, 'personalization_notes'] = email['key_personalization']
-        df.at[idx, 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # print(f"    ✓ Subject: {email['subject'][:60]}...")
-        # print(f"    ✓ Tone: {email['tone_used']}\n")
+        df.at[df.index[idx], 'email_subject'] = email['subject']
+        df.at[df.index[idx], 'email_body'] = email['body']
+        df.at[df.index[idx], 'email_tone'] = email['tone_used']
+        df.at[df.index[idx], 'personalization_notes'] = email['key_personalization']
+        df.at[df.index[idx], 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # Save to CSV
     df.to_csv(output_csv, index=False)
@@ -226,12 +228,17 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
     return df
 
 
+def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_generated.csv'):
+    """সব leads এর জন্য email generate করা - sync wrapper for backward compatibility"""
+    return asyncio.run(generate_all_emails_async(input_csv, output_csv))
+
+
 # Run
 if __name__ == "__main__":
     print("=" * 80)
     print("📧 AI-POWERED PERSONALIZED EMAIL GENERATOR")
     print("=" * 80)
     
-    generate_all_emails('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv', 'output/emails_generated.csv')
+    asyncio.run(generate_all_emails_async('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv', 'output/emails_generated.csv'))
     
     print("\n✨ Done! Check 'output/emails_generated.csv' for all personalized emails")

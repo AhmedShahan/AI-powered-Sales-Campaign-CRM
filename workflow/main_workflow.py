@@ -8,6 +8,7 @@ Step 2 (optional): Mail Reply Agent -> Response Analysis -> Summary Report
 import sys
 import os
 import time
+import asyncio
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,10 +18,10 @@ load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Import functions from src modules
-from lead_analysis import process_leads
-from personalized_email import generate_all_emails
-from sendMailHog import send_emails
-from mail_reply_agent import process_emails_with_types
+from lead_analysis import process_leads_async
+from personalized_email import generate_all_emails_async
+from sendMailHog import send_emails_async
+from mail_reply_agent import process_emails_with_types_async
 from summary_report import generate_campaign_report
 
 # Import response analysis components (avoid importing the module directly due to module-level execution)
@@ -44,8 +45,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(REPORT_DIR, exist_ok=True)
 
 
-def step1_lead_to_email():
-    """Step 1: Lead Analysis -> Personalized Email -> Send MailHog"""
+async def step1_lead_to_email():
+    """Step 1: Lead Analysis -> Personalized Email -> Send MailHog - async version"""
     print("\n" + "="*80)
     print("STEP 1: LEAD ANALYSIS → PERSONALIZED EMAIL → SEND MAILHOG")
     print("="*80 + "\n")
@@ -62,7 +63,7 @@ def step1_lead_to_email():
         if not os.path.exists(leads_csv):
             raise FileNotFoundError(f"Leads CSV not found at: {leads_csv}")
         
-        process_leads(leads_csv)
+        await process_leads_async(leads_csv)
         analyzed_leads_csv = os.path.join(OUTPUT_DIR, 'analyzed_leads.csv')
         print(f"✅ Lead Analysis Complete: {analyzed_leads_csv}\n")
         
@@ -70,7 +71,7 @@ def step1_lead_to_email():
         print("\n[2/3] Generating Personalized Emails...")
         print("-" * 80)
         emails_generated_csv = os.path.join(OUTPUT_DIR, 'emails_generated.csv')
-        generate_all_emails(analyzed_leads_csv, emails_generated_csv)
+        await generate_all_emails_async(analyzed_leads_csv, emails_generated_csv)
         print(f"✅ Email Generation Complete: {emails_generated_csv}\n")
         
         # Display emails in the requested format (before sending)
@@ -80,7 +81,7 @@ def step1_lead_to_email():
         print("\n[3/3] Sending Emails via MailHog...")
         print("-" * 80)
         emails_sent_csv = os.path.join(OUTPUT_DIR, 'emails_sent_status.csv')
-        send_emails(emails_generated_csv, emails_sent_csv)
+        await send_emails_async(emails_generated_csv, emails_sent_csv)
         print(f"✅ Email Sending Complete: {emails_sent_csv}\n")
         
         print("\n" + "="*80)
@@ -92,8 +93,8 @@ def step1_lead_to_email():
         os.chdir(original_cwd)
 
 
-def step2_reply_to_report():
-    """Step 2: Mail Reply Agent -> Response Analysis -> Summary Report"""
+async def step2_reply_to_report():
+    """Step 2: Mail Reply Agent -> Response Analysis -> Summary Report - async version"""
     print("\n" + "="*80)
     print("STEP 2: MAIL REPLY AGENT → RESPONSE ANALYSIS → SUMMARY REPORT")
     print("="*80 + "\n")
@@ -111,7 +112,7 @@ def step2_reply_to_report():
         print("\n[1/3] Processing Mail Replies...")
         print("-" * 80)
         emails_with_replies_csv = os.path.join(OUTPUT_DIR, 'emails_with_replies.csv')
-        process_emails_with_types(emails_sent_csv, emails_with_replies_csv)
+        await process_emails_with_types_async(emails_sent_csv, emails_with_replies_csv)
         print(f"✅ Mail Reply Processing Complete: {emails_with_replies_csv}\n")
         
         # 2. Response Analysis
@@ -119,7 +120,7 @@ def step2_reply_to_report():
         print("-" * 80)
         # Process to temp file first
         temp_final_csv = os.path.join(OUTPUT_DIR, 'final.csv')
-        analyze_responses(emails_with_replies_csv, temp_final_csv)
+        await analyze_responses_async(emails_with_replies_csv, temp_final_csv)
         print(f"✅ Response Analysis Complete: {temp_final_csv}\n")
         
         # Save final.csv to report folder
@@ -152,9 +153,25 @@ def step2_reply_to_report():
         os.chdir(original_cwd)
 
 
-def analyze_responses(input_csv, output_csv):
+async def classify_reply_async(text, chain):
+    """Classify a reply text - async version"""
+    text = str(text).strip() if text else ""
+    if not text:
+        return {"class": "NO_REPLY", "reason": "Empty content"}
+    try:
+        res = await chain.ainvoke({"reply": text})
+        allowed_labels = {"SKIP", "INTERESTED", "NOT_INTERESTED", "NEEDS_FOLLOW_UP", "UNCLEAR"}
+        label = res.get("class", "").upper()
+        if label not in allowed_labels:
+            label = "UNCLEAR"
+        return {"class": label, "reason": res.get("reason", "")}
+    except Exception as e:
+        return {"class": "UNCLEAR", "reason": f"Error: {e}"}
+
+
+async def analyze_responses_async(input_csv, output_csv):
     """
-    Response analysis function
+    Response analysis function - async version
     Recreates the classify_reply logic from response_analysis module
     """
     # Use absolute path for input
@@ -178,34 +195,19 @@ Text:
     parser = JsonOutputParser()
     chain = prompt | llm | parser
     
-    allowed_labels = {"SKIP", "INTERESTED", "NOT_INTERESTED", "NEEDS_FOLLOW_UP", "UNCLEAR"}
-    
-    def classify_reply(text):
-        """Classify a reply text"""
-        text = str(text).strip() if text else ""
-        if not text:
-            return {"class": "NO_REPLY", "reason": "Empty content"}
-        try:
-            res = chain.invoke({"reply": text})
-            label = res.get("class", "").upper()
-            if label not in allowed_labels:
-                label = "UNCLEAR"
-            return {"class": label, "reason": res.get("reason", "")}
-        except Exception as e:
-            return {"class": "UNCLEAR", "reason": f"Error: {e}"}
-    
     # Load CSV
     df = pd.read_csv(input_csv)
     
     if "reply_mail_body" not in df.columns:
         raise ValueError("Column 'reply_mail_body' not found")
     
-    # Process with batch delay
-    results = []
-    for i, reply in enumerate(df["reply_mail_body"], 1):
-        print(f"Processing {i}/{len(df)}...")
-        results.append(classify_reply(reply))
-        time.sleep(0.5)  # small delay to avoid hitting rate limits
+    # Process all replies in parallel
+    print(f"Processing {len(df)} replies in parallel...")
+    tasks = []
+    for reply in df["reply_mail_body"]:
+        tasks.append(classify_reply_async(reply, chain))
+    
+    results = await asyncio.gather(*tasks)
     
     df["reply_class"] = [r["class"] for r in results]
     df["reply_reason"] = [r["reason"] for r in results]
@@ -269,22 +271,22 @@ def ask_user_continue():
     return user_input.lower() in ['yes', 'y']
 
 
-def main():
-    """Main workflow orchestrator"""
+async def main_async():
+    """Main workflow orchestrator - async version"""
     print("\n" + "="*80)
     print("🚀 AI-POWERED SALES CAMPAIGN CRM - WORKFLOW ORCHESTRATOR")
     print("="*80)
     
     try:
         # Step 1: Lead Analysis → Personalized Email → Send MailHog
-        step1_lead_to_email()
+        await step1_lead_to_email()
         
         # Ask user if they want to continue
         should_continue = ask_user_continue()
         
         if should_continue:
             # Step 2: Mail Reply Agent → Response Analysis → Summary Report
-            step2_reply_to_report()
+            await step2_reply_to_report()
             print("\n" + "="*80)
             print("🎉 WORKFLOW COMPLETED SUCCESSFULLY!")
             print("="*80)
@@ -313,6 +315,11 @@ def main():
         print("  4. All dependencies are installed")
         print("="*80 + "\n")
         raise
+
+
+def main():
+    """Main workflow orchestrator - sync wrapper"""
+    asyncio.run(main_async())
 
 
 if __name__ == "__main__":

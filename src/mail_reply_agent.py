@@ -20,14 +20,13 @@ async def process_single_email_reply(row, idx, llm):
         "UNCLEAR"
     ])
     
-    print(f"Email {idx + 1}: {reply_type}")
-    
     # If SKIP, no reply
     if reply_type == "SKIP":
         return {
             'idx': idx,
             'reply': "No",
-            'reply_mail_body': ""
+            'reply_mail_body': "",
+            'reply_type': reply_type
         }
     
     # Generate reply based on type
@@ -43,14 +42,16 @@ async def process_single_email_reply(row, idx, llm):
         return {
             'idx': idx,
             'reply': "Yes",
-            'reply_mail_body': reply_body
+            'reply_mail_body': reply_body,
+            'reply_type': reply_type
         }
     except Exception as e:
-        print(f"Error: {e}")
         return {
             'idx': idx,
             'reply': "No",
-            'reply_mail_body': ""
+            'reply_mail_body': "",
+            'reply_type': reply_type,
+            'error': str(e)
         }
 
 
@@ -74,26 +75,58 @@ async def process_emails_with_types_async(input_csv: str, output_csv: str):
     
     print(f"\nProcessing {len(df)} emails in parallel...\n")
     
-    # Process all emails in parallel
+    # Process all emails in parallel with real-time output
+    async def process_with_index(idx, row):
+        result = await process_single_email_reply(row, idx, llm)
+        return idx, result
+    
     tasks = []
     for idx, row in df.iterrows():
-        tasks.append(process_single_email_reply(row, idx, llm))
+        tasks.append(asyncio.create_task(process_with_index(idx, row)))
     
-    results = await asyncio.gather(*tasks)
+    # Process results as they complete
+    completed_count = 0
+    results_dict = {}
+    
+    for coro in asyncio.as_completed(tasks):
+        try:
+            idx, result = await coro
+            completed_count += 1
+            
+            # Print output immediately
+            reply_type = result.get('reply_type', 'Unknown')
+            if result['reply'] == 'Yes':
+                print(f"📧 [{completed_count}/{len(df)}] Reply generated for email {idx+1}")
+                print(f"    Reply type: {reply_type}")
+                reply_body = result.get('reply_mail_body', '')
+                if reply_body:
+                    preview = reply_body[:100] + "..." if len(reply_body) > 100 else reply_body
+                    print(f"    Preview: {preview}")
+                print()
+            else:
+                error_msg = f" - Error: {result.get('error', '')}" if result.get('error') else ""
+                print(f"⏭️  [{completed_count}/{len(df)}] Skipped email {idx+1} (Type: {reply_type}){error_msg}\n")
+            
+            # Store result with original index
+            results_dict[idx] = result
+            
+        except Exception as e:
+            completed_count += 1
+            print(f"❌ [{completed_count}/{len(df)}] Error processing email: {e}\n")
+            # We can't recover idx from exception, skip this entry
     
     # Update dataframe with results
-    for result in results:
-        idx = result['idx']
+    for idx, result in results_dict.items():
         df.at[df.index[idx], 'reply'] = result['reply']
         df.at[df.index[idx], 'reply_mail_body'] = result['reply_mail_body']
     
     # Save
     df.to_csv(output_csv, index=False)
-    print(f"\n✓ Saved to {output_csv}")
+    print(f"✓ Saved to {output_csv}")
     
     # Summary
     print(f"\nReplied: {(df['reply'] == 'Yes').sum()}")
-    print(f"Skipped: {(df['reply'] == 'No').sum()}")
+    print(f"Skipped: {(df['reply'] == 'No').sum()}\n")
 
 
 def process_emails_with_types(input_csv: str, output_csv: str):

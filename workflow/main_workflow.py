@@ -201,19 +201,49 @@ Text:
     if "reply_mail_body" not in df.columns:
         raise ValueError("Column 'reply_mail_body' not found")
     
-    # Process all replies in parallel
-    print(f"Processing {len(df)} replies in parallel...")
+    # Process all replies in parallel with real-time output
+    print(f"Processing {len(df)} replies in parallel...\n")
+    
+    # Create tasks with indices
+    async def classify_with_index(idx, reply):
+        result = await classify_reply_async(reply, chain)
+        return idx, result
+    
     tasks = []
-    for reply in df["reply_mail_body"]:
-        tasks.append(classify_reply_async(reply, chain))
+    for idx, reply in enumerate(df["reply_mail_body"]):
+        tasks.append(asyncio.create_task(classify_with_index(idx, reply)))
     
-    results = await asyncio.gather(*tasks)
+    # Process results as they complete
+    completed_count = 0
+    results_dict = {}
     
-    df["reply_class"] = [r["class"] for r in results]
-    df["reply_reason"] = [r["reason"] for r in results]
+    for coro in asyncio.as_completed(tasks):
+        try:
+            idx, result = await coro
+            completed_count += 1
+            
+            # Print output immediately
+            reply_text = str(df.iloc[idx]["reply_mail_body"])[:80] if pd.notna(df.iloc[idx]["reply_mail_body"]) else "No reply"
+            print(f"🔍 [{completed_count}/{len(df)}] Classified reply {idx+1}")
+            print(f"    Class: {result['class']}")
+            print(f"    Reason: {result['reason']}")
+            print(f"    Preview: {reply_text}...")
+            print()
+            
+            # Store result with original index
+            results_dict[idx] = result
+            
+        except Exception as e:
+            completed_count += 1
+            print(f"❌ [{completed_count}/{len(df)}] Error classifying reply: {e}\n")
+            # We can't recover idx from exception, skip this entry
+    
+    # Update dataframe with results in order
+    df["reply_class"] = [results_dict.get(idx, {"class": "UNCLEAR"})["class"] for idx in range(len(df))]
+    df["reply_reason"] = [results_dict.get(idx, {"reason": "Error"})["reason"] for idx in range(len(df))]
     
     df.to_csv(output_csv, index=False)
-    print(f"Finished! Classified CSV saved to {output_csv}")
+    print(f"✅ Finished! Classified CSV saved to {output_csv}\n")
 
 
 def display_emails(emails_csv):

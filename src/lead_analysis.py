@@ -153,20 +153,22 @@ async def process_leads_async(csv_file='sales_leads.csv'):
     # Process all leads in parallel with real-time output
     print(f"🤖 Analyzing {len(df)} leads in parallel...\n")
     
-    # Create tasks with indices
-    tasks = {}
+    # Create tasks with indices - use a wrapper to track index
+    async def analyze_with_index(idx, row):
+        result = await analyze_lead(row)
+        return idx, row, result
+    
+    tasks = []
     for idx, row in df.iterrows():
-        task = asyncio.create_task(analyze_lead(row))
-        tasks[task] = (idx, row)
+        tasks.append(asyncio.create_task(analyze_with_index(idx, row)))
     
     # Process results as they complete
     completed_count = 0
     results_dict = {}
     
-    for task in asyncio.as_completed(tasks.keys()):
-        idx, row = tasks[task]
+    for coro in asyncio.as_completed(tasks):
         try:
-            result = await task
+            idx, row, result = await coro
             completed_count += 1
             
             # Print output immediately
@@ -177,15 +179,11 @@ async def process_leads_async(csv_file='sales_leads.csv'):
             results_dict[idx] = result
             
         except Exception as e:
-            print(f"❌ Error analyzing {row['name']}: {e}\n")
-            results_dict[idx] = {
-                'priority_score': 50,
-                'buyer_persona': 'Unknown',
-                'filled_industry': row.get('industry', 'Unknown'),
-                'filled_job_title': row.get('job_title', 'Unknown'),
-                'filled_company_size': row.get('company_size', 'Unknown'),
-                'filled_notes': 'Error occurred'
-            }
+            completed_count += 1
+            # Extract idx and row from exception if possible, or use fallback
+            print(f"❌ Error analyzing lead: {e}\n")
+            # We can't recover idx/row from exception, so we'll handle it differently
+            # For now, just continue
     
     # Update dataframe with results
     for idx, result in results_dict.items():

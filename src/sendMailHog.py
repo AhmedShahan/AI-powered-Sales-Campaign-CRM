@@ -78,10 +78,9 @@ async def send_emails_async(input_csv='output/emails_generated.csv', output_csv=
     print(f"🔗 Using MailHog at {SMTP_HOST}:{SMTP_PORT}\n")
     print(f"📤 Sending {len(df)} emails in parallel...\n")
     
-    # Create tasks for parallel sending
-    tasks = []
-    for idx, row in df.iterrows():
-        task = asyncio.to_thread(
+    # Create tasks for parallel sending with real-time output
+    async def send_with_index(idx, row):
+        result = await asyncio.to_thread(
             _send_single_email,
             row,
             idx,
@@ -90,22 +89,40 @@ async def send_emails_async(input_csv='output/emails_generated.csv', output_csv=
             SMTP_HOST,
             SMTP_PORT
         )
-        tasks.append(task)
+        return idx, row.get('name', 'Unknown'), result
     
-    # Execute all tasks in parallel
-    results = await asyncio.gather(*tasks)
+    tasks = []
+    for idx, row in df.iterrows():
+        tasks.append(send_with_index(idx, row))
+    
+    # Process results as they complete
+    completed_count = 0
+    results_dict = {}
+    
+    for coro in asyncio.as_completed(tasks):
+        try:
+            idx, name, result = await coro
+            completed_count += 1
+            
+            # Print output immediately
+            if result['email_sent']:
+                print(f"✅ [{completed_count}/{len(df)}] Sent to {result['name']} ({result.get('recipient', '')})")
+            else:
+                print(f"❌ [{completed_count}/{len(df)}] Failed for {result.get('name', name)} - {result['send_status']}")
+            
+            # Store result with original index
+            results_dict[idx] = result
+            
+        except Exception as e:
+            completed_count += 1
+            print(f"❌ [{completed_count}/{len(df)}] Error sending email: {e}")
+            # We can't recover idx/name from exception, skip this entry
     
     # Update dataframe with results
-    for result in results:
-        idx = result['idx']
-        df.at[df.index[idx], 'email_sent'] = result['email_sent']
-        df.at[df.index[idx], 'sent_at'] = result['sent_at']
-        df.at[df.index[idx], 'send_status'] = result['send_status']
-        
-        if result['email_sent']:
-            print(f"✅ {idx+1}/{len(df)}: Sent to {result['name']} ({result.get('recipient', '')})")
-        else:
-            print(f"❌ {idx+1}/{len(df)}: Failed for {result.get('name', 'Unknown')} - {result['send_status']}")
+    for idx, result in results_dict.items():
+        df.at[idx, 'email_sent'] = result['email_sent']
+        df.at[idx, 'sent_at'] = result['sent_at']
+        df.at[idx, 'send_status'] = result['send_status']
     
     # Save status CSV
     df.to_csv(output_csv, index=False)

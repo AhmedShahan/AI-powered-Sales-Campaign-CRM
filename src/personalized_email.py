@@ -179,33 +179,65 @@ async def generate_all_emails_async(input_csv='analyzed_leads.csv', output_csv='
     df['personalization_notes'] = ''
     df['email_generated_at'] = ''
     
-    # Generate emails in parallel
+    # Generate emails in parallel with real-time output
+    async def generate_with_index(idx, row):
+        email = await generate_email(row)
+        return idx, row, email
+    
     tasks = []
     for idx, row in df.iterrows():
-        tasks.append(generate_email(row))
+        tasks.append(asyncio.create_task(generate_with_index(idx, row)))
     
-    emails = await asyncio.gather(*tasks)
+    # Process results as they complete
+    completed_count = 0
+    emails_dict = {}
+    
+    for coro in asyncio.as_completed(tasks):
+        try:
+            idx, row, email = await coro
+            completed_count += 1
+            
+            # Print output immediately
+            print(f"✍️  [{completed_count}/{len(df)}] Generated email: {row['name']} ({row['company']})")
+            print(f"    Priority: {row.get('priority_score', 'N/A')}/100 | Persona: {row.get('buyer_persona', 'N/A')}")
+            print("\n📧 Generated Email:")
+            print(f"Subject: {email['subject']}")
+            print(f"Body: {email['body']}")
+            print(f"Tone: {email['tone_used']}")
+            print(f"Personalization: {email['key_personalization']}")
+            print("-" * 80)  # separator for readability
+            print()
+            
+            # Store email with original index
+            emails_dict[idx] = email
+            
+        except Exception as e:
+            completed_count += 1
+            print(f"❌ Error generating email: {e}\n")
+            # We'll handle missing entries later
     
     # Update dataframe with results
-    for idx, email in enumerate(emails):
-        row = df.iloc[idx]
-        print(f"✍️  Generated email {idx+1}/{len(df)}: {row['name']} ({row['company']})")
-        print(f"    Priority: {row.get('priority_score', 'N/A')}/100 | Persona: {row.get('buyer_persona', 'N/A')}")
-        print("\n📧 Generated Email:")
-        print(email)
-        print("-" * 80)  # separator for readability
-        
-        # Update dataframe
-        df.at[df.index[idx], 'email_subject'] = email['subject']
-        df.at[df.index[idx], 'email_body'] = email['body']
-        df.at[df.index[idx], 'email_tone'] = email['tone_used']
-        df.at[df.index[idx], 'personalization_notes'] = email['key_personalization']
-        df.at[df.index[idx], 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for idx in df.index:
+        if idx in emails_dict:
+            email = emails_dict[idx]
+            df.at[idx, 'email_subject'] = email['subject']
+            df.at[idx, 'email_body'] = email['body']
+            df.at[idx, 'email_tone'] = email['tone_used']
+            df.at[idx, 'personalization_notes'] = email['key_personalization']
+            df.at[idx, 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # Fallback for failed entries
+            row = df.loc[idx]
+            df.at[idx, 'email_subject'] = f"Following up with {row.get('company', 'Company')}"
+            df.at[idx, 'email_body'] = f"Dear {row.get('name', 'Valued Customer')},\n\nI hope this email finds you well..."
+            df.at[idx, 'email_tone'] = 'Generic fallback'
+            df.at[idx, 'personalization_notes'] = 'Error occurred during generation'
+            df.at[idx, 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # Save to CSV
     df.to_csv(output_csv, index=False)
     
-    print(f"\n✅ All emails generated!")
+    print(f"✅ All emails generated!")
     print(f"💾 Saved to: {output_csv}\n")
     
     # Show sample emails

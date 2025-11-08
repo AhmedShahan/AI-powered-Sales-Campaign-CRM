@@ -25,6 +25,7 @@ def send_emails(input_csv='output/emails_generated.csv', output_csv='output/emai
     
     # Add status columns
     df['email_sent'] = False
+    df['email_sender'] = SENDER_EMAIL
     df['sent_at'] = ''
     df['send_status'] = ''
     

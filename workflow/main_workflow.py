@@ -34,12 +34,14 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
 OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
+REPORT_DIR = os.path.join(BASE_DIR, 'report')
 
 # Email configuration (from sendMailHog.py)
 SENDER_EMAIL = 'sales@yourcompany.com'
 
-# Ensure output directory exists
+# Ensure directories exist
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
 
 
 def step1_lead_to_email():
@@ -71,15 +73,15 @@ def step1_lead_to_email():
         generate_all_emails(analyzed_leads_csv, emails_generated_csv)
         print(f"✅ Email Generation Complete: {emails_generated_csv}\n")
         
+        # Display emails in the requested format (before sending)
+        display_emails(emails_generated_csv)
+        
         # 3. Send Emails via MailHog
         print("\n[3/3] Sending Emails via MailHog...")
         print("-" * 80)
         emails_sent_csv = os.path.join(OUTPUT_DIR, 'emails_sent_status.csv')
         send_emails(emails_generated_csv, emails_sent_csv)
         print(f"✅ Email Sending Complete: {emails_sent_csv}\n")
-        
-        # Display emails in the requested format
-        display_emails(emails_sent_csv, max_display=3)
         
         print("\n" + "="*80)
         print("✅ STEP 1 COMPLETED SUCCESSFULLY")
@@ -115,19 +117,27 @@ def step2_reply_to_report():
         # 2. Response Analysis
         print("\n[2/3] Analyzing Responses...")
         print("-" * 80)
-        final_csv = os.path.join(OUTPUT_DIR, 'final.csv')
-        analyze_responses(emails_with_replies_csv, final_csv)
-        print(f"✅ Response Analysis Complete: {final_csv}\n")
+        # Process to temp file first
+        temp_final_csv = os.path.join(OUTPUT_DIR, 'final.csv')
+        analyze_responses(emails_with_replies_csv, temp_final_csv)
+        print(f"✅ Response Analysis Complete: {temp_final_csv}\n")
+        
+        # Save final.csv to report folder
+        final_csv = os.path.join(REPORT_DIR, 'final.csv')
+        df_final = pd.read_csv(temp_final_csv)
+        df_final.to_csv(final_csv, index=False)
+        print(f"✅ Final CSV saved to report folder: {final_csv}\n")
         
         # 3. Summary Report
         print("\n[3/3] Generating Summary Report...")
         print("-" * 80)
-        report_path = os.path.join(OUTPUT_DIR, 'campaign_report.md')
         # Use absolute path for the CSV file
         if not os.path.isabs(emails_with_replies_csv):
             emails_with_replies_csv = os.path.join(BASE_DIR, emails_with_replies_csv)
         report = generate_campaign_report(emails_with_replies_csv)
         
+        # Save campaign_report.md to report folder
+        report_path = os.path.join(REPORT_DIR, 'campaign_report.md')
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
         
@@ -204,9 +214,9 @@ Text:
     print(f"Finished! Classified CSV saved to {output_csv}")
 
 
-def display_emails(emails_csv, max_display=3):
+def display_emails(emails_csv):
     """
-    Display emails in the requested format:
+    Display all emails in the requested format:
     Mail To:
     Mail From:
     Subject:
@@ -218,13 +228,13 @@ def display_emails(emails_csv, max_display=3):
     df = pd.read_csv(emails_csv)
     
     print("\n" + "="*80)
-    print("📧 EMAILS SENT (Sample)")
+    print("📧 GENERATED EMAILS")
     print("="*80)
     
-    # Display top emails
-    display_count = min(max_display, len(df))
-    for idx, row in df.head(display_count).iterrows():
+    # Display all emails
+    for idx, row in df.iterrows():
         recipient_email = row.get('email', 'N/A')
+        # Use sender email from CSV if available, otherwise use default
         sender_email = row.get('email_sender', SENDER_EMAIL)
         subject = row.get('email_subject', 'N/A')
         body = row.get('email_body', 'N/A')
@@ -237,9 +247,6 @@ def display_emails(emails_csv, max_display=3):
         print("-" * 80)
         print(body)
         print(f"{'='*80}\n")
-    
-    if len(df) > display_count:
-        print(f"... and {len(df) - display_count} more emails\n")
 
 
 def ask_user_continue():
@@ -281,11 +288,7 @@ def main():
             print("\n" + "="*80)
             print("🎉 WORKFLOW COMPLETED SUCCESSFULLY!")
             print("="*80)
-            print("\nAll outputs are saved in the 'output' directory:")
-            print("  - analyzed_leads.csv")
-            print("  - emails_generated.csv")
-            print("  - emails_sent_status.csv")
-            print("  - emails_with_replies.csv")
+            print("\nFinal reports saved in the 'report' directory:")
             print("  - final.csv")
             print("  - campaign_report.md")
             print("="*80 + "\n")
@@ -296,10 +299,6 @@ def main():
             print("\nStep 1 completed successfully.")
             print("Step 2 (Mail Reply Agent → Response Analysis → Summary Report)")
             print("will be executed after the client replies.")
-            print("\nOutputs saved so far:")
-            print("  - analyzed_leads.csv")
-            print("  - emails_generated.csv")
-            print("  - emails_sent_status.csv")
             print("="*80 + "\n")
     
     except Exception as e:

@@ -182,8 +182,13 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
     for idx, row in df.iterrows():
         print(f"✍️  Generating email {idx+1}/{len(df)}: {row['name']} ({row['company']})")
         print(f"    Priority: {row.get('priority_score', 'N/A')}/100 | Persona: {row.get('buyer_persona', 'N/A')}")
-        
+
         email = generate_email(row)
+        
+        print("\n📧 Generated Email:")
+        print(email)
+        print("-" * 80)  # separator for readability
+
         
         # Update dataframe
         df.at[idx, 'email_subject'] = email['subject']
@@ -192,8 +197,8 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
         df.at[idx, 'personalization_notes'] = email['key_personalization']
         df.at[idx, 'email_generated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        print(f"    ✓ Subject: {email['subject'][:60]}...")
-        print(f"    ✓ Tone: {email['tone_used']}\n")
+        # print(f"    ✓ Subject: {email['subject'][:60]}...")
+        # print(f"    ✓ Tone: {email['tone_used']}\n")
     
     # Save to CSV
     df.to_csv(output_csv, index=False)

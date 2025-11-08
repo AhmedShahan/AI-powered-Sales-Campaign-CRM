@@ -101,13 +101,17 @@ def process_leads(csv_file='sales_leads.csv'):
         
         print(f"   Score: {result['priority_score']}/100 | {result['buyer_persona']}\n")
     
+    # Ensure priority_score is numeric and sort descending (highest priority first)
+    df['priority_score'] = pd.to_numeric(df['priority_score'], errors='coerce').fillna(0).astype(int)
+    df_sorted = df.sort_values(by='priority_score', ascending=False).reset_index(drop=True)
+
     # Save
     output_file = '/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv'
-    df.to_csv(output_file, index=False)
+    df_sorted.to_csv(output_file, index=False)
     
-    print(f"Done! Saved to: {output_file}")
+    print(f"Done! Saved to: {output_file} (sorted by priority_score desc)")
     
-    return df
+    return df_sorted
 
 
 # Runs

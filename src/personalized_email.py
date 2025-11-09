@@ -267,10 +267,15 @@ def generate_all_emails(input_csv='analyzed_leads.csv', output_csv='emails_gener
 
 # Run
 if __name__ == "__main__":
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    input_file = os.path.join(base_dir, 'output', 'analyzed_leads.csv')
+    output_file = os.path.join(base_dir, 'output', 'emails_generated.csv')
+    
     print("=" * 80)
     print("📧 AI-POWERED PERSONALIZED EMAIL GENERATOR")
     print("=" * 80)
     
-    asyncio.run(generate_all_emails_async('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv', 'output/emails_generated.csv'))
+    asyncio.run(generate_all_emails_async(input_file, output_file))
     
     print("\n✨ Done! Check 'output/emails_generated.csv' for all personalized emails")

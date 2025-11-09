@@ -5,13 +5,18 @@ Reads CSV and sends personalized emails
 
 import smtplib
 import asyncio
+import os
 from email.mime.text import MIMEText
 import pandas as pd
 from datetime import datetime
+from dotenv import load_dotenv
 
-# MailHog SMTP Configuration
-SMTP_HOST = 'localhost'
-SMTP_PORT = 1025
+# Load environment variables
+load_dotenv()
+
+# MailHog SMTP Configuration (can be overridden via environment variables)
+SMTP_HOST = os.getenv('SMTP_HOST', 'localhost')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '1025'))
 SENDER_EMAIL = 'sales@yourcompany.com'
 
 def _send_single_email(row, idx, total, sender_email, smtp_host, smtp_port):

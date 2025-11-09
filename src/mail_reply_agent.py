@@ -137,4 +137,8 @@ def process_emails_with_types(input_csv: str, output_csv: str):
 
 # Run
 if __name__ == "__main__":
-    asyncio.run(process_emails_with_types_async("/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/emails_sent_status.csv", "output/emails_with_replies.csv"))
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    input_file = os.path.join(base_dir, 'output', 'emails_sent_status.csv')
+    output_file = os.path.join(base_dir, 'output', 'emails_with_replies.csv')
+    asyncio.run(process_emails_with_types_async(input_file, output_file))

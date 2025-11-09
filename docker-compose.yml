@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sales-crm-app
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - SMTP_HOST=host.docker.internal
+      - SMTP_PORT=1025
+    volumes:
+      - ./dataset:/app/dataset
+      - ./output:/app/output
+      - ./report:/app/report
+    stdin_open: true
+    tty: true
+    command: python3 workflow/main_workflow.py

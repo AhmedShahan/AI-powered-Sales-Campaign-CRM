@@ -283,22 +283,15 @@ def display_emails(emails_csv):
 
 def ask_user_continue():
     """
-    Ask user if they want to continue to step 2
+    Function that always continues to step 2 automatically
     """
     print("\n" + "="*80)
-    print("STEP 1 COMPLETED - READY FOR STEP 2")
+    print("STEP 1 COMPLETED - CONTINUING TO STEP 2")
     print("="*80)
-    print("\nThe agent will generate some random responses.")
-    print("Should I continue with Step 2 (Mail Reply Agent → Response Analysis → Summary Report)?")
-    print("\nOptions:")
-    print("  Yes - Continue with Step 2")
-    print("  No  - Stop workflow (Step 2 will execute after client replies)")
-    print("\n" + "-" * 80)
+    print("\nProceeding with Mail Reply Agent → Response Analysis → Summary Report...")
+    print("-" * 80 + "\n")
     
-    user_input = input("\nEnter your choice (Yes/No): ").strip()
-    print(f"\n✅ User selection = {user_input}\n")
-    
-    return user_input.lower() in ['yes', 'y']
+    return True
 
 
 async def main_async():

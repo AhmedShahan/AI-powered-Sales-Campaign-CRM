@@ -200,8 +200,12 @@ async def process_leads_async(csv_file='sales_leads.csv'):
     # Sort by priority score (highest first)
     df = df.sort_values('priority_score', ascending=False)
     
-    # Save
-    output_file = '/home/shahanahmed/AI-powered-Sales-Campaign-CRM/output/analyzed_leads.csv'
+    # Save - use relative path (works in both Docker and local)
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_dir = os.path.join(base_dir, 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, 'analyzed_leads.csv')
     df.to_csv(output_file, index=False)
     
     print(f"✅ Done! Saved to: {output_file}")
@@ -217,4 +221,7 @@ def process_leads(csv_file='sales_leads.csv'):
 
 # Run
 if __name__ == "__main__":
-    asyncio.run(process_leads_async('/home/shahanahmed/AI-powered-Sales-Campaign-CRM/dataset/leads.csv'))
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    dataset_file = os.path.join(base_dir, 'dataset', 'leads.csv')
+    asyncio.run(process_leads_async(dataset_file))

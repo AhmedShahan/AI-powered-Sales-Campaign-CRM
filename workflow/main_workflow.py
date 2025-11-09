@@ -17,6 +17,14 @@ load_dotenv()
 # Add src directory to path to import modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+# Ensure HF client compatibility shim runs before importing modules that
+# instantiate HuggingFaceEndpoint (it expects InferenceClient.post).
+try:
+    import hf_compat  # noqa: F401 - module run for side-effects
+except Exception:
+    # If the shim import fails, we'll continue and let runtime errors surface
+    pass
+
 # Import functions from src modules
 from lead_analysis import process_leads_async
 from personalized_email import generate_all_emails_async
@@ -28,6 +36,7 @@ from summary_report import generate_campaign_report
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import HuggingFaceEndpoint
 
 import pandas as pd
 
@@ -180,8 +189,12 @@ async def analyze_responses_async(input_csv, output_csv):
     if not os.path.isabs(output_csv):
         output_csv = os.path.join(BASE_DIR, output_csv)
     
-    # Initialize LLM (same as response_analysis.py)
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.9)
+    # Initialize LLM via HuggingFace endpoint
+    llm = HuggingFaceEndpoint(
+        repo_id="openai/gpt-oss-20b",  # open-source GPT-like model
+        temperature=0.9,
+        huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+    )
     
     # JSON classification prompt (same as response_analysis.py)
     prompt = ChatPromptTemplate.from_template(

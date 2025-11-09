@@ -2,6 +2,7 @@ import pandas as pd
 import random
 import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import HuggingFaceEndpoint
 import os
 
 from dotenv import load_dotenv
@@ -63,10 +64,13 @@ async def process_emails_with_types_async(input_csv: str, output_csv: str):
     print(f"Reading {input_csv}...")
     df = pd.read_csv(input_csv)
     
-    # Initialize LLM
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        temperature=0.9
+    # Initialize LLM via HuggingFace endpoint
+    llm = HuggingFaceEndpoint(
+        repo_id="meta-llama/Llama-2-7b-chat-hf",
+        task="text-generation",
+        api_url="https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf",
+        temperature=0.7,
+        huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
     )
     
     # Add reply columns

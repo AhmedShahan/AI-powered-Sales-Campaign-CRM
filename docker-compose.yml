@@ -8,6 +8,7 @@ services:
     container_name: sales-crm-app
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
       - SMTP_HOST=host.docker.internal
       - SMTP_PORT=1025
     volumes:

@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import HuggingFaceEndpoint
 from langchain_core.prompts import ChatPromptTemplate
 import json
 from datetime import datetime
@@ -14,10 +15,13 @@ from dotenv import load_dotenv
 load_dotenv()
 # Setup Gemini
 
-
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0.8  # Slightly higher for more creative emails
+# Use HuggingFace endpoint as the LLM
+llm = HuggingFaceEndpoint(
+    repo_id="meta-llama/Llama-2-7b-chat-hf",
+    task="text-generation",
+    api_url="https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf",
+    temperature=0.7,
+    huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
 )
 
 print("✅ Email Generator ready!")

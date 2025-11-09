@@ -5,6 +5,7 @@ This script analyzes email campaign data and generates a comprehensive markdown 
 
 import pandas as pd
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import HuggingFaceEndpoint
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 import os
@@ -72,16 +73,20 @@ def generate_campaign_report(csv_file_path):
     """Generate comprehensive campaign report using LangChain and Gemini"""
     
     # Load API key from environment
-    gemini_api_key = os.getenv("GOOGLE_API_KEY")
+    google_api_key = os.getenv("GOOGLE_API_KEY")
     
-    if not gemini_api_key:
+    if not google_api_key:
         raise ValueError("GOOGLE_API_KEY not found in environment variables. Please add it to your .env file.")
     
-    # Initialize Gemini model via LangChain
+    # Use Google's Gemini Pro model
     model = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        temperature=0.3,
-        convert_system_message_to_human=True
+        temperature=0.7,
+        top_p=0.95,
+        top_k=40,
+        max_output_tokens=2048,
+        google_api_key=google_api_key,
+        convert_system_message_to_human=True,
     )
     
     # Load and analyze data

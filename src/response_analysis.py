@@ -4,15 +4,20 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.llms import HuggingFaceEndpoint
 import time
 
 # Load API key
 load_dotenv()
 
-# Initialize LLM
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.9)
-
-# JSON classification prompt
+# Initialize LLM via HuggingFace endpoint
+llm = HuggingFaceEndpoint(
+        repo_id="meta-llama/Llama-2-7b-chat-hf",
+        task="text-generation",
+        api_url="https://api-inference.huggingface.co/models/meta-llama/Llama-2-7b-chat-hf",
+        temperature=0.7,
+        huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+    )# JSON classification prompt
 prompt = ChatPromptTemplate.from_template(
     """You are a classifier for customer email replies.
 Return a JSON object:
